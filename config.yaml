@@ -1,0 +1,54 @@
+# Central configuration for the Mobile Network Traffic Prediction pipeline.
+# Edit paths/hyperparameters here rather than in code, so every run is
+# reproducible and driven by a single source of truth.
+
+seed: 42
+
+data:
+  raw_path: "data/raw/mobile_traffic.csv"
+  processed_path: "data/processed/mobile_traffic_processed.csv"
+  datetime_column: "timestamp"
+  target_column: "traffic_volume"
+  frequency: "H"              # pandas offset alias, e.g. H=hourly, D=daily
+  test_size: 0.2               # fraction of series held out for testing (chronological split)
+  validation_size: 0.1         # fraction of the remaining training data used for validation
+
+preprocessing:
+  fill_method: "linear"        # method for interpolating missing values
+  scaling_method: "minmax"     # minmax | standard | none
+  lag_features: [1, 2, 3, 6, 12, 24]
+  rolling_windows: [3, 6, 24]
+  add_time_features: true      # hour-of-day, day-of-week, is_weekend, etc.
+
+models:
+  arima:
+    order: [2, 1, 2]           # (p, d, q)
+    seasonal_order: [1, 1, 1, 24]  # (P, D, Q, s)
+
+  lstm:
+    sequence_length: 24
+    units: [64, 32]
+    dropout: 0.2
+    learning_rate: 0.001
+    batch_size: 32
+    epochs: 50
+    early_stopping_patience: 5
+
+  xgboost:
+    n_estimators: 500
+    max_depth: 6
+    learning_rate: 0.05
+    subsample: 0.8
+    colsample_bytree: 0.8
+    early_stopping_rounds: 20
+
+training:
+  forecast_horizon: 24         # steps ahead to forecast
+  cross_validation_folds: 5
+
+paths:
+  experiment_log: "experiments/experiment_log.csv"
+  tuning_results: "experiments/hyperparameter_tuning/tuning_results.csv"
+  results_dir: "experiments/results"
+  plots_dir: "results/plots"
+  tables_dir: "results/tables"
