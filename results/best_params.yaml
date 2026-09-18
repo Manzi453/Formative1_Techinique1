@@ -1,3 +1,11 @@
+lstm:
+  learning_rate: 0.001
+  sequence_length: 144
+  tuned_on_square: 5161
+  units:
+  - 64
+  - 32
+  validation_window_days: 3
 sarima:
   fourier_harmonics: 4
   fourier_period: 144
@@ -5,5 +13,19 @@ sarima:
   - 3
   - 1
   - 1
+  tuned_on_square: 5161
+  validation_window_days: 3
+tcn:
+  dilations:
+  - 1
+  - 2
+  - 4
+  - 8
+  - 16
+  - 32
+  filters: 32
+  kernel_size: 3
+  learning_rate: 0.001
+  sequence_length: 144
   tuned_on_square: 5161
   validation_window_days: 3
