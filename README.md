@@ -21,22 +21,16 @@ deep learning model (LSTM), and a Temporal Convolutional Network (TCN).
 The full write-up — methodology, results, and discussion — is in
 [`report/final_report.pdf`](report/final_report.pdf).
 
-## 2. Data Availability Note (important)
+## 2. Data Window
 
 The assignment specifies a ~two-month archive and asks for the forecasting
-evaluation to be run on the week of **Dec 16–22, 2013**. The raw archive
-available in `data/raw/` only contains the contiguous block **2013-11-01 →
-2013-11-30** (plus two disjoint single-day files, `2013-12-31` and
-`2014-01-01`, which are excluded — see `common.py` for the reasoning).
-
-**All results in this repository are therefore computed over the available
-November window**, with the evaluation week substituted to the **last full
-week of that window, 2013-11-24 → 2013-11-30** (mirroring the brief's
-placement of the evaluation week near the end of the observation period).
-If the missing December files are obtained (see references [2]/[3] below),
-only `EVAL_WEEK_START` / `EVAL_WEEK_END` and `OBSERVATION_START` /
-`OBSERVATION_END` in `common.py` need to change to reproduce the exact
-Dec 16–22 setup — no other code changes required.
+evaluation to be run on the week of **Dec 16–22, 2013**. The raw archive in
+`data/raw/` covers **2013-11-01 → 2014-01-01**; the observation period used
+for all EDA/ranking is the full two months, **2013-11-01 → 2013-12-31**
+(`OBSERVATION_START`/`OBSERVATION_END` in `common.py`), and forecasting is
+evaluated on the literal assignment week, **2013-12-16 → 2013-12-22**
+(`EVAL_WEEK_START`/`EVAL_WEEK_END`), with models trained on
+2013-11-01 → 2013-12-15.
 
 ## 3. Dataset
 
@@ -55,7 +49,7 @@ of (square, interval) pairs actually needed. This project focuses on the
 
 ## 4. Data Handling & Memory Management
 
-Daily files are 300-400 MB each (~10 GB for the full November archive) on
+Daily files are 300-400 MB each (~20 GB for the full 2-month archive) on
 an 8 GB RAM machine — naively loading the whole archive is not viable. The
 strategy implemented in
 [`notebooks/00_data_pipeline.ipynb`](notebooks/00_data_pipeline.ipynb) is a
@@ -73,13 +67,12 @@ strategy implemented in
 Measured evidence (peak RSS via `/usr/bin/time -l`, results in
 [`results/memory_benchmark.csv`](results/memory_benchmark.csv)): on a
 single day file, the naive full load (`pd.read_csv`, all 8 columns, default
-dtypes) peaks at **~876 MB** resident memory; the optimized loader
+dtypes) peaks at **~635 MB** resident memory; the optimized loader
 (chunked, 2 columns, `int32`/`float32`, early aggregation) peaks at
-**~304 MB** (a ~65% reduction) while also collapsing 4.84M raw rows down to
-10,000. Applied end-to-end, both passes process the full 30-day / ~10 GB
-archive in **under two minutes combined**, with peak memory bounded by
-chunk size rather than file or archive size — see the full discussion in
-the report.
+**~292 MB** (a ~54% reduction) while also collapsing 4.84M raw rows down to
+10,000. Applied end-to-end, both passes process the full ~2-month / ~20 GB
+archive in a few minutes, with peak memory bounded by chunk size rather
+than file or archive size — see the full discussion in the report.
 
 ## 5. Models Implemented and Justification
 
@@ -96,7 +89,7 @@ the report, Section 2.
 
 ### Prerequisites
 - Python 3.10+ (developed/tested on 3.11)
-- ~4 GB free disk for the November raw archive, ~8 GB RAM recommended
+- ~20 GB free disk for the raw archive, ~8 GB RAM recommended
 - Jupyter (`jupyter nbconvert` / `jupyter lab`) to run the notebooks
 
 ### Setup
@@ -136,27 +129,37 @@ jupyter nbconvert --to notebook --execute --inplace notebooks/04_model_compariso
 | 4. LSTM + TCN | `03_lstm_tcn.ipynb` | `results/tuning_results_lstm_tcn.csv`, `results/best_params.yaml` (`lstm`/`tcn` keys), `results/pred_{lstm,tcn}_sq*.pkl` |
 | 5. Comparison | `04_model_comparison.ipynb` | `figures/pred_sq*_*.png` (9 plots), `figures/model_comparison.png`, `results/model_performance_square_*.csv`, `results/timing_stats.csv`, `results/model_performance_comparison_all.csv` |
 
-Notebooks 1–2 are the most expensive (full-archive ingestion, ~2 min; SARIMA
-grid search + walk-forward eval, a few minutes); 3 is the most expensive of
-all (LSTM/TCN tuning + walk-forward training on 3 squares, ~15–20 min on
-CPU). Notebook 4 does **not** retrain anything — it only reads the
-`results/pred_*.pkl` files written by notebooks 2 and 3.
+Notebook 00 (full-archive ingestion) takes a few minutes; notebook 02
+(SARIMA grid search + walk-forward eval) a few minutes; notebook 03
+(LSTM/TCN tuning + walk-forward training on 3 squares) is the most
+expensive, ~20–30 min on CPU. Notebook 04 does **not** retrain anything —
+it only reads the `results/pred_*.pkl` files written by notebooks 02 and 03.
 
 `common.py` holds the constants and data/feature-engineering functions
 shared identically across every notebook (path constants, seed,
 `load_square_series`, preprocessing/Fourier helpers, `compute_metrics`) —
 see its module docstring for exactly what is and isn't there.
 
+**If you edit `common.py` and re-run a notebook from an already-open Jupyter
+kernel** (e.g. in VS Code / JupyterLab), restart that kernel first. Python
+caches imported modules, so a kernel started before the edit will keep using
+the old `common.py` values in memory and silently regenerate outputs with
+stale constants even though the file on disk is correct — the symptom is
+`data/processed/`/`results/` files reverting to old numbers after a notebook
+you didn't intend to touch gets re-run. `jupyter nbconvert --execute` (as
+used above) is unaffected, since it always starts a fresh kernel.
+
 ## 8. Results Summary
 
 See [`results/`](results/) for the full per-square performance tables and
 [`report/final_report.pdf`](report/final_report.pdf) for the complete
-write-up, methodology, and discussion. Headline finding: **SARIMA is the
-most consistently accurate model, winning on every square and every
-metric**; LSTM is second; TCN is competitive with LSTM on MAPE for the two
-highest-traffic squares but is the weakest model on the noisiest,
-lowest-traffic square — see the report's failure-case analysis (Section
-6.3) for why.
+write-up, methodology, and discussion. Headline finding: **SARIMA leads on
+MAE/RMSE on every square** (LSTM edges it out on MAPE on one square, a
+near-tie); **LSTM is a clear second, well ahead of TCN on every square and
+metric**; **TCN is the weakest model everywhere**, most dramatically on
+square 5161 (the most volatile of the top-3) — see the report's
+failure-case analysis (Section 6.3) for why, and why more training data
+alone didn't close that gap.
 
 ## 9. Repository Structure
 
