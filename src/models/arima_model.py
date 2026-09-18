@@ -20,21 +20,28 @@ class ARIMAModel:
         self.model = None
         self.results = None
 
-    def fit(self, train_series: pd.Series) -> "ARIMAModel":
+    def fit(self, train_series: pd.Series, exog: Optional[pd.DataFrame] = None) -> "ARIMAModel":
+        # enforce_stationarity/invertibility=True constrains the optimizer to
+        # AR/MA roots outside the unit circle. Leaving both False (statsmodels'
+        # example default) let the optimizer converge to explosive AR
+        # coefficients on some squares, producing forecasts that diverge to
+        # +-inf within a few walk-forward steps; enforcing both keeps the
+        # fitted model's recursive dynamics bounded.
         self.model = SARIMAX(
             train_series,
+            exog=exog,
             order=self.order,
             seasonal_order=self.seasonal_order,
-            enforce_stationarity=False,
-            enforce_invertibility=False,
+            enforce_stationarity=True,
+            enforce_invertibility=True,
         )
         self.results = self.model.fit(disp=False)
         return self
 
-    def predict(self, steps: int) -> np.ndarray:
+    def predict(self, steps: int, exog: Optional[pd.DataFrame] = None) -> np.ndarray:
         if self.results is None:
             raise RuntimeError("Call fit() before predict().")
-        forecast = self.results.forecast(steps=steps)
+        forecast = self.results.forecast(steps=steps, exog=exog)
         return forecast.values
 
     def predict_in_sample(self, start: int, end: int) -> np.ndarray:

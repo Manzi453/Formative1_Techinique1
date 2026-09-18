@@ -1,17 +1,10 @@
-"""Data cleaning, feature engineering, and scaling for time series data."""
+"""Feature engineering and scaling helpers for per-square time series."""
 
-from typing import List, Tuple
+from typing import List
 
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
-
-
-def clean_series(df: pd.DataFrame, target_column: str, fill_method: str = "linear") -> pd.DataFrame:
-    """Interpolate missing values and drop duplicate timestamps."""
-    df = df[~df.index.duplicated(keep="first")].copy()
-    df[target_column] = df[target_column].interpolate(method=fill_method).bfill().ffill()
-    return df
 
 
 def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -43,6 +36,29 @@ def add_rolling_features(df: pd.DataFrame, target_column: str, windows: List[int
     return df
 
 
+def fourier_terms(
+    index: pd.DatetimeIndex, period: int, n_harmonics: int = 2, freq_minutes: int = 10
+) -> pd.DataFrame:
+    """Deterministic sin/cos regressors at `period` steps, for dynamic harmonic
+    regression (Hyndman & Athanasopoulos, ch. 12): a cheap, numerically stable
+    substitute for a full seasonal-ARIMA term when the seasonal period is long
+    (here, 144 steps = 1 day at 10-minute resolution), since fitting SARIMAX
+    with seasonal_order=(P,D,Q,144) directly is computationally impractical.
+
+    Phase is derived from absolute epoch time (not row position), so terms
+    computed on disjoint slices of the same index (e.g. train vs. a single
+    future timestamp during walk-forward forecasting) remain phase-consistent.
+    """
+    cycle_seconds = period * freq_minutes * 60
+    epoch_seconds = index.asi8 // 10**9
+    phase = (epoch_seconds % cycle_seconds) / cycle_seconds
+    data = {}
+    for k in range(1, n_harmonics + 1):
+        data[f"fourier_sin_{k}"] = np.sin(2 * np.pi * k * phase)
+        data[f"fourier_cos_{k}"] = np.cos(2 * np.pi * k * phase)
+    return pd.DataFrame(data, index=index)
+
+
 class SeriesScaler:
     """Thin wrapper around sklearn scalers for a single target column."""
 
@@ -70,40 +86,3 @@ class SeriesScaler:
         if self.scaler is None:
             return values
         return self.scaler.inverse_transform(values.reshape(-1, 1)).flatten()
-
-
-def chronological_split(
-    df: pd.DataFrame, test_size: float = 0.2, validation_size: float = 0.0
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Split a time-indexed dataframe chronologically (no shuffling).
-
-    Returns (train, validation, test). If validation_size is 0, the
-    validation dataframe will be empty.
-    """
-    n = len(df)
-    test_start = int(n * (1 - test_size))
-    val_start = int(test_start * (1 - validation_size))
-
-    train = df.iloc[:val_start]
-    validation = df.iloc[val_start:test_start]
-    test = df.iloc[test_start:]
-
-    return train, validation, test
-
-
-def build_feature_pipeline(
-    df: pd.DataFrame,
-    target_column: str,
-    fill_method: str,
-    lags: List[int],
-    rolling_windows: List[int],
-    add_time: bool = True,
-) -> pd.DataFrame:
-    """Run the full cleaning + feature engineering pipeline used by tree/DL models."""
-    df = clean_series(df, target_column, fill_method)
-    if add_time:
-        df = add_time_features(df)
-    df = add_lag_features(df, target_column, lags)
-    df = add_rolling_features(df, target_column, rolling_windows)
-    df = df.dropna()
-    return df
