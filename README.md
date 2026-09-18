@@ -18,7 +18,7 @@ Three model families are implemented, tuned, and compared: a statistical
 baseline (SARIMA/SARIMAX with Fourier seasonal regressors), a recurrent
 deep learning model (LSTM), and a Temporal Convolutional Network (TCN).
 
-The full write-up — methodology, results, and discussion — is in
+The full write-up (methodology, results, and discussion) is in
 [`report/final_report.pdf`](report/final_report.pdf).
 
 ## 2. Data Window
@@ -50,7 +50,7 @@ of (square, interval) pairs actually needed. This project focuses on the
 ## 4. Data Handling & Memory Management
 
 Daily files are 300-400 MB each (~20 GB for the full 2-month archive) on
-an 8 GB RAM machine — naively loading the whole archive is not viable. The
+an 8 GB RAM machine, so naively loading the whole archive is not viable. The
 strategy implemented in
 [`notebooks/00_data_pipeline.ipynb`](notebooks/00_data_pipeline.ipynb) is a
 **two-pass, chunked, column-pruned, dtype-downcast aggregation**:
@@ -72,7 +72,7 @@ dtypes) peaks at **~635 MB** resident memory; the optimized loader
 **~292 MB** (a ~54% reduction) while also collapsing 4.84M raw rows down to
 10,000. Applied end-to-end, both passes process the full ~2-month / ~20 GB
 archive in a few minutes, with peak memory bounded by chunk size rather
-than file or archive size — see the full discussion in the report.
+than file or archive size; see the full discussion in the report.
 
 ## 5. Models Implemented and Justification
 
@@ -80,7 +80,7 @@ than file or archive size — see the full discussion in the report.
 |---|-------|----------|----------------|
 | 1 | **SARIMA + Fourier terms** | [`02_sarima.ipynb`](notebooks/02_sarima.ipynb) | Classical linear statistical baseline. Daily seasonality (period=144 at 10-min resolution) is modeled with sin/cos (Fourier) regressors rather than a full seasonal-ARIMA term, since fitting `SARIMAX(seasonal_order=(P,D,Q,144))` directly is computationally impractical to tune (see report, Methodology). |
 | 2 | **LSTM** | [`03_lstm_tcn.ipynb`](notebooks/03_lstm_tcn.ipynb) | Recurrent architecture capable of learning nonlinear, longer-range temporal dependencies (daily/weekly rhythms, bursty spikes) that a linear model cannot; its sequential hidden-state update naturally privileges the most recent observations. |
-| 3 | **TCN** | [`03_lstm_tcn.ipynb`](notebooks/03_lstm_tcn.ipynb) | Dilated causal 1D convolutions with residual connections — a nonlinear, non-recurrent sequence model, structurally distinct from LSTM (parallel convolution vs. sequential recurrence, no built-in recency bias), that tests whether recurrence is actually necessary and is substantially faster to train. |
+| 3 | **TCN** | [`03_lstm_tcn.ipynb`](notebooks/03_lstm_tcn.ipynb) | Dilated causal 1D convolutions with residual connections: a nonlinear, non-recurrent sequence model, structurally distinct from LSTM (parallel convolution vs. sequential recurrence, no built-in recency bias), that tests whether recurrence is actually necessary and is substantially faster to train. |
 
 Full justification (grounded in exploratory analysis + literature) is in
 the report, Section 2.
@@ -103,13 +103,13 @@ pip install -r requirements.txt
 ```
 
 Place the raw daily files (`sms-call-internet-mi-YYYY-MM-DD.txt`) in
-`data/raw/` — see references [1]-[3] below for where to obtain the dataset.
+`data/raw/`; see references [1]-[3] below for where to obtain the dataset.
 
 ## 7. How to Run the Pipeline
 
 The pipeline is 5 notebooks, run **in order**. Each notebook picks up where
 the previous one left off by reading files the earlier notebook wrote to
-`data/processed/`, `results/`, or `figures/` — there is no separate
+`data/processed/`, `results/`, or `figures/`; there is no separate
 orchestration script; run them from `jupyter lab`/`jupyter notebook`, or
 headlessly:
 
@@ -132,19 +132,19 @@ jupyter nbconvert --to notebook --execute --inplace notebooks/04_model_compariso
 Notebook 00 (full-archive ingestion) takes a few minutes; notebook 02
 (SARIMA grid search + walk-forward eval) a few minutes; notebook 03
 (LSTM/TCN tuning + walk-forward training on 3 squares) is the most
-expensive, ~20–30 min on CPU. Notebook 04 does **not** retrain anything —
+expensive, ~20–30 min on CPU. Notebook 04 does **not** retrain anything;
 it only reads the `results/pred_*.pkl` files written by notebooks 02 and 03.
 
 `common.py` holds the constants and data/feature-engineering functions
 shared identically across every notebook (path constants, seed,
-`load_square_series`, preprocessing/Fourier helpers, `compute_metrics`) —
+`load_square_series`, preprocessing/Fourier helpers, `compute_metrics`);
 see its module docstring for exactly what is and isn't there.
 
 **If you edit `common.py` and re-run a notebook from an already-open Jupyter
 kernel** (e.g. in VS Code / JupyterLab), restart that kernel first. Python
 caches imported modules, so a kernel started before the edit will keep using
 the old `common.py` values in memory and silently regenerate outputs with
-stale constants even though the file on disk is correct — the symptom is
+stale constants even though the file on disk is correct. The symptom is
 `data/processed/`/`results/` files reverting to old numbers after a notebook
 you didn't intend to touch gets re-run. `jupyter nbconvert --execute` (as
 used above) is unaffected, since it always starts a fresh kernel.
@@ -157,7 +157,7 @@ write-up, methodology, and discussion. Headline finding: **SARIMA leads on
 MAE/RMSE on every square** (LSTM edges it out on MAPE on one square, a
 near-tie); **LSTM is a clear second, well ahead of TCN on every square and
 metric**; **TCN is the weakest model everywhere**, most dramatically on
-square 5161 (the most volatile of the top-3) — see the report's
+square 5161 (the most volatile of the top-3); see the report's
 failure-case analysis (Section 6.3) for why, and why more training data
 alone didn't close that gap.
 

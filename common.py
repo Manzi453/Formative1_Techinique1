@@ -1,14 +1,7 @@
 """Shared constants and data/feature utilities used identically across notebooks.
 
-Consolidates logic duplicated across the old src/ingest.py, src/preprocessor.py,
-src/evaluation.py, and the load_square_series() copy-pasted in run_eda.py /
-tune_hyperparameters.py / run_forecasting.py. Model classes and training/tuning
-loops are NOT here -- each lives in its own notebook.
-
-Only config.yaml keys actually read somewhere in the original code are carried
-forward as constants (e.g. preprocessing.fill_method/scaling_method were
-declared but never read -- both were always hardcoded at the call site --
-so they're intentionally dropped rather than carried forward as dead config).
+Model classes and training/tuning loops are NOT here -- each lives in its own
+notebook.
 """
 
 import os
@@ -34,10 +27,8 @@ CHUNKSIZE = 2_000_000
 OBSERVATION_START = "2013-11-01"
 OBSERVATION_END = "2013-12-31"
 
-# Two squares required by the assignment brief (fixed, not data-derived).
 FIXED_SQUARES = [4159, 4556]
 
-# Assignment-specified evaluation week.
 EVAL_WEEK_START = "2013-12-16"
 EVAL_WEEK_END = "2013-12-22"
 TRAIN_START = "2013-11-01"
@@ -71,8 +62,6 @@ def load_square_series(square_id: int, path: str = TARGET_SERIES_PATH, freq: str
     s = s[~s.index.duplicated(keep="first")].asfreq(freq)
     return s.interpolate(method="linear").bfill().ffill()
 
-
-# --- Feature engineering (ported verbatim from src/preprocessor.py) --------
 
 def fourier_terms(index: pd.DatetimeIndex, period: int, n_harmonics: int = 2, freq_minutes: int = 10) -> pd.DataFrame:
     """Deterministic sin/cos regressors at `period` steps (dynamic harmonic
@@ -117,8 +106,6 @@ class SeriesScaler:
             return values
         return self.scaler.inverse_transform(values.reshape(-1, 1)).flatten()
 
-
-# --- Evaluation metrics (ported verbatim from src/evaluation.py) -----------
 
 def mean_absolute_percentage_error(y_true, y_pred) -> float:
     y_true, y_pred = np.asarray(y_true), np.asarray(y_pred)
