@@ -1,0 +1,3 @@
+series,adf_stat,p_value,n_lags_used,critical_5pct,stationary_at_5pct
+level,-13.74610999519895,1.071816598116427e-25,31,-2.862214274623216,True
+first_difference,-9.787538216905388,6.483073648539781e-17,29,-2.862214117359085,True
