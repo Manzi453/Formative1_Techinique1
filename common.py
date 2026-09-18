@@ -24,7 +24,6 @@ SEED = 42
 
 RAW_DIR = "data/raw"
 RAW_GLOB = "sms-call-internet-mi-*.txt"
-PROCESSED_DIR = "data/processed"
 SQUARE_TOTALS_PATH = "data/processed/square_totals.csv"
 TARGET_SERIES_PATH = "data/processed/target_squares_timeseries.csv"
 TARGET_SQUARES_META_PATH = "data/processed/target_squares.yaml"
@@ -33,15 +32,14 @@ FREQUENCY = "10min"
 CHUNKSIZE = 2_000_000
 
 OBSERVATION_START = "2013-11-01"
-OBSERVATION_END = "2013-11-30"
+OBSERVATION_END = "2013-12-31"
 
 # Two squares required by the assignment brief (fixed, not data-derived).
 FIXED_SQUARES = [4159, 4556]
 
-# Substitute evaluation week -- the raw archive only covers November, so this
-# stands in for the assignment's Dec 16-22 window (see README / report).
-EVAL_WEEK_START = "2013-11-24"
-EVAL_WEEK_END = "2013-11-30"
+# Assignment-specified evaluation week.
+EVAL_WEEK_START = "2013-12-16"
+EVAL_WEEK_END = "2013-12-22"
 TRAIN_START = "2013-11-01"
 
 
