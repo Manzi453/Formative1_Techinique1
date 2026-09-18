@@ -1,0 +1,9 @@
+sarima:
+  fourier_harmonics: 4
+  fourier_period: 144
+  order:
+  - 3
+  - 1
+  - 1
+  tuned_on_square: 5161
+  validation_window_days: 3
