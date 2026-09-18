@@ -34,8 +34,9 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Experiment artifacts (large/binary, regenerate via main.py)
-experiments/results/*.pkl
+# Experiment artifacts (large/binary, regenerate via notebooks/02_sarima.ipynb
+# and 03_lstm_tcn.ipynb)
+results/pred_*.pkl
 *.h5
 *.keras
 
