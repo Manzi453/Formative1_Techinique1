@@ -1,8 +1,4 @@
-"""Shared constants and data/feature utilities used identically across notebooks.
-
-Model classes and training/tuning loops are NOT here -- each lives in its own
-notebook.
-"""
+"""Shared constants and data/feature utilities used identically across notebooks."""
 
 import os
 import random
