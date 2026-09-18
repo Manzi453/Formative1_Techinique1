@@ -15,8 +15,11 @@ performance vary across geographical areas with different traffic
 characteristics?*
 
 Three model families are implemented, tuned, and compared: a statistical
-baseline (SARIMAX with Fourier seasonal regressors), a recurrent deep
-learning model (LSTM), and a gradient-boosted tree ensemble (XGBoost).
+baseline (SARIMA/SARIMAX with Fourier seasonal regressors), a recurrent
+deep learning model (LSTM), and a Temporal Convolutional Network (TCN).
+
+The full write-up — methodology, results, and discussion — is in
+[`report/final_report.pdf`](report/final_report.pdf).
 
 ## 2. Data Availability Note (important)
 
@@ -24,15 +27,16 @@ The assignment specifies a ~two-month archive and asks for the forecasting
 evaluation to be run on the week of **Dec 16–22, 2013**. The raw archive
 available in `data/raw/` only contains the contiguous block **2013-11-01 →
 2013-11-30** (plus two disjoint single-day files, `2013-12-31` and
-`2014-01-01`, which are excluded — see `config.yaml` for the reasoning).
+`2014-01-01`, which are excluded — see `common.py` for the reasoning).
 
 **All results in this repository are therefore computed over the available
 November window**, with the evaluation week substituted to the **last full
 week of that window, 2013-11-24 → 2013-11-30** (mirroring the brief's
 placement of the evaluation week near the end of the observation period).
 If the missing December files are obtained (see references [2]/[3] below),
-only `data.observation_period` and `data.eval_week` in `config.yaml` need to
-change to reproduce the exact Dec 16–22 setup — no code changes required.
+only `EVAL_WEEK_START` / `EVAL_WEEK_END` and `OBSERVATION_START` /
+`OBSERVATION_END` in `common.py` need to change to reproduce the exact
+Dec 16–22 setup — no other code changes required.
 
 ## 3. Dataset
 
@@ -53,50 +57,52 @@ of (square, interval) pairs actually needed. This project focuses on the
 
 Daily files are 300-400 MB each (~10 GB for the full November archive) on
 an 8 GB RAM machine — naively loading the whole archive is not viable. The
-strategy implemented in [`src/ingest.py`](src/ingest.py) is a **two-pass,
-chunked, column-pruned, dtype-downcast aggregation**:
+strategy implemented in
+[`notebooks/00_data_pipeline.ipynb`](notebooks/00_data_pipeline.ipynb) is a
+**two-pass, chunked, column-pruned, dtype-downcast aggregation**:
 
-- **Pass 1** (`compute_square_totals`): stream every file in fixed-size
-  chunks, reading only the 2 columns needed, collapsing country codes with a
-  per-chunk `groupby(square_id).sum()`. Only a 10,000-length running total is
-  kept in memory for the whole archive.
-- **Pass 2** (`extract_target_series`): once the top-traffic squares are
-  known from Pass 1, stream the files again reading 3 columns, filtering to
-  the ~5 target squares *before* aggregating (>99.9% row reduction), then
-  collapsing country codes per `(square, timestamp)`.
+- **Pass 1**: stream every file in fixed-size chunks, reading only the 2
+  columns needed, collapsing country codes with a per-chunk
+  `groupby(square_id).sum()`. Only a 10,000-length running total is kept in
+  memory for the whole archive.
+- **Pass 2**: once the top-traffic squares are known from Pass 1, stream
+  the files again reading 3 columns, filtering to the ~5 target squares
+  *before* aggregating (>99.9% row reduction), then collapsing country
+  codes per `(square, timestamp)`.
 
-Measured evidence (`python scripts/benchmark_memory.py`, results in
-[`results/tables/memory_benchmark.csv`](results/tables/memory_benchmark.csv)):
-on a single day file, the naive full load (`pd.read_csv`, all 8 columns,
-default dtypes) peaks at **~950 MB** resident memory; the optimized loader
+Measured evidence (peak RSS via `/usr/bin/time -l`, results in
+[`results/memory_benchmark.csv`](results/memory_benchmark.csv)): on a
+single day file, the naive full load (`pd.read_csv`, all 8 columns, default
+dtypes) peaks at **~876 MB** resident memory; the optimized loader
 (chunked, 2 columns, `int32`/`float32`, early aggregation) peaks at
-**~305 MB** (a ~68% reduction) while also collapsing 4.84M raw rows down to
+**~304 MB** (a ~65% reduction) while also collapsing 4.84M raw rows down to
 10,000. Applied end-to-end, both passes process the full 30-day / ~10 GB
-archive in **under 90 seconds combined**, with peak memory bounded by chunk
-size rather than file or archive size — see the full discussion in the
-report.
+archive in **under two minutes combined**, with peak memory bounded by
+chunk size rather than file or archive size — see the full discussion in
+the report.
 
 ## 5. Models Implemented and Justification
 
-| # | Model | File | Justification |
-|---|-------|------|----------------|
-| 1 | **SARIMAX + Fourier terms** | [`src/models/arima_model.py`](src/models/arima_model.py) | Classical linear statistical baseline. Daily seasonality (period=144 at 10-min resolution) is modeled with sin/cos (Fourier) regressors rather than a full seasonal-ARIMA term, since fitting `SARIMAX(seasonal_order=(P,D,Q,144))` directly is computationally impractical to tune (see report/Methodology). |
-| 2 | **LSTM** | [`src/models/lstm_model.py`](src/models/lstm_model.py) | Recurrent architecture capable of learning nonlinear, longer-range temporal dependencies (daily/weekly rhythms, bursty spikes) that a linear model cannot. |
-| 3 | **XGBoost** | [`src/models/xgboost_model.py`](src/models/xgboost_model.py) | Gradient-boosted trees on a lag/rolling/calendar feature representation. Fast to train, robust to noise and outliers/spikes, and gives feature-importance insight into which lags drive predictions. |
+| # | Model | Notebook | Justification |
+|---|-------|----------|----------------|
+| 1 | **SARIMA + Fourier terms** | [`02_sarima.ipynb`](notebooks/02_sarima.ipynb) | Classical linear statistical baseline. Daily seasonality (period=144 at 10-min resolution) is modeled with sin/cos (Fourier) regressors rather than a full seasonal-ARIMA term, since fitting `SARIMAX(seasonal_order=(P,D,Q,144))` directly is computationally impractical to tune (see report, Methodology). |
+| 2 | **LSTM** | [`03_lstm_tcn.ipynb`](notebooks/03_lstm_tcn.ipynb) | Recurrent architecture capable of learning nonlinear, longer-range temporal dependencies (daily/weekly rhythms, bursty spikes) that a linear model cannot; its sequential hidden-state update naturally privileges the most recent observations. |
+| 3 | **TCN** | [`03_lstm_tcn.ipynb`](notebooks/03_lstm_tcn.ipynb) | Dilated causal 1D convolutions with residual connections — a nonlinear, non-recurrent sequence model, structurally distinct from LSTM (parallel convolution vs. sequential recurrence, no built-in recency bias), that tests whether recurrence is actually necessary and is substantially faster to train. |
 
 Full justification (grounded in exploratory analysis + literature) is in
-the report, Section 3.
+the report, Section 2.
 
 ## 6. Installation & Setup
 
 ### Prerequisites
 - Python 3.10+ (developed/tested on 3.11)
 - ~4 GB free disk for the November raw archive, ~8 GB RAM recommended
+- Jupyter (`jupyter nbconvert` / `jupyter lab`) to run the notebooks
 
 ### Setup
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/Manzi453/Formative1_Techinique1
 cd Formative1_Techinique1
 python3 -m venv venv
 source venv/bin/activate          # Windows: venv\Scripts\activate
@@ -108,60 +114,71 @@ Place the raw daily files (`sms-call-internet-mi-YYYY-MM-DD.txt`) in
 
 ## 7. How to Run the Pipeline
 
-The pipeline has 4 stages, each independently runnable (see each script's
-docstring under `scripts/`). `main.py` runs them all in order:
+The pipeline is 5 notebooks, run **in order**. Each notebook picks up where
+the previous one left off by reading files the earlier notebook wrote to
+`data/processed/`, `results/`, or `figures/` — there is no separate
+orchestration script; run them from `jupyter lab`/`jupyter notebook`, or
+headlessly:
 
 ```bash
-python main.py --config config.yaml
+jupyter nbconvert --to notebook --execute --inplace notebooks/00_data_pipeline.ipynb
+jupyter nbconvert --to notebook --execute --inplace notebooks/01_eda.ipynb
+jupyter nbconvert --to notebook --execute --inplace notebooks/02_sarima.ipynb
+jupyter nbconvert --to notebook --execute --inplace notebooks/03_lstm_tcn.ipynb
+jupyter nbconvert --to notebook --execute --inplace notebooks/04_model_comparison.ipynb
 ```
 
-| Stage | Script | Produces |
+| Stage | Notebook | Produces |
 |---|---|---|
-| 1. Ingest | `scripts/build_dataset.py` | `data/processed/square_totals.csv`, `data/processed/target_squares_timeseries.csv`, `data/processed/target_squares.yaml` |
-| 2. EDA | `scripts/run_eda.py` | `results/plots/exploratory_analysis/*`, `results/plots/time_series_decomposition/*`, `results/tables/data_summary.csv`, `results/tables/stationarity_tests.csv` |
-| 3. Tuning | `scripts/tune_hyperparameters.py` | `experiments/hyperparameter_tuning/tuning_results.csv`, `experiments/hyperparameter_tuning/best_params.yaml` |
-| 4. Forecasting | `scripts/run_forecasting.py` | `results/plots/model_predictions/square_<id>_<model>.png` (9 plots), `results/tables/model_performance_square_<id>.csv` (3 tables), `results/tables/timing_stats.csv`, `experiments/experiment_log.csv` |
+| 1. Data pipeline | `00_data_pipeline.ipynb` | `data/processed/{square_totals.csv, target_squares_timeseries.csv, target_squares.yaml}`, `results/memory_benchmark.csv` |
+| 2. EDA | `01_eda.ipynb` | `figures/eda_*.png`, `results/{data_summary.csv, stationarity_tests.csv}` |
+| 3. SARIMA | `02_sarima.ipynb` | `results/tuning_results_sarima.csv`, `results/best_params.yaml` (`sarima` key), `results/pred_sarima_sq*.pkl` |
+| 4. LSTM + TCN | `03_lstm_tcn.ipynb` | `results/tuning_results_lstm_tcn.csv`, `results/best_params.yaml` (`lstm`/`tcn` keys), `results/pred_{lstm,tcn}_sq*.pkl` |
+| 5. Comparison | `04_model_comparison.ipynb` | `figures/pred_sq*_*.png` (9 plots), `figures/model_comparison.png`, `results/model_performance_square_*.csv`, `results/timing_stats.csv`, `results/model_performance_comparison_all.csv` |
 
-Stages 1 and 3 are the most expensive; skip them once their outputs already
-exist with e.g. `python main.py --skip-ingest --skip-tuning`.
+Notebooks 1–2 are the most expensive (full-archive ingestion, ~2 min; SARIMA
+grid search + walk-forward eval, a few minutes); 3 is the most expensive of
+all (LSTM/TCN tuning + walk-forward training on 3 squares, ~15–20 min on
+CPU). Notebook 4 does **not** retrain anything — it only reads the
+`results/pred_*.pkl` files written by notebooks 2 and 3.
 
-Regenerate the cross-square/cross-model comparison plot from saved results
-without retraining:
-```bash
-python results/visualizations.py
-```
-
-Also see the notebooks (`notebooks/01_exploratory_analysis.ipynb`,
-`notebooks/02_preprocessing.ipynb`, `notebooks/03_model_comparison.ipynb`)
-for an interactive walkthrough of the same steps.
+`common.py` holds the constants and data/feature-engineering functions
+shared identically across every notebook (path constants, seed,
+`load_square_series`, preprocessing/Fourier helpers, `compute_metrics`) —
+see its module docstring for exactly what is and isn't there.
 
 ## 8. Results Summary
 
-See [`results/tables/`](results/tables/) for the full per-square performance
-tables and [`reports/`](reports/) for the complete write-up, methodology,
-and discussion.
+See [`results/`](results/) for the full per-square performance tables and
+[`report/final_report.pdf`](report/final_report.pdf) for the complete
+write-up, methodology, and discussion. Headline finding: **SARIMA is the
+most consistently accurate model, winning on every square and every
+metric**; LSTM is second; TCN is competitive with LSTM on MAPE for the two
+highest-traffic squares but is the weakest model on the noisiest,
+lowest-traffic square — see the report's failure-case analysis (Section
+6.3) for why.
 
 ## 9. Repository Structure
 
 ```
 ├── data/
 │   ├── raw/               # daily CDR files (gitignored, see section 3)
-│   └── processed/         # square_totals.csv, target_squares_timeseries.csv
-├── scripts/                # the 4 pipeline stages + memory benchmark
-├── src/                    # ingest, preprocessing, models, evaluation, utils
-├── notebooks/               # interactive EDA / preprocessing / comparison
-├── experiments/             # experiment log + hyperparameter tuning results
-├── results/                 # plots and summary tables
-├── reports/                 # final report and bibliography
-├── main.py                  # orchestrates all 4 stages
-├── config.yaml               # single source of truth for paths/hyperparameters/seed
-└── requirements.txt
+│   └── processed/         # square_totals.csv, target_squares_timeseries.csv (gitignored, regenerate via notebook 00)
+├── notebooks/              # the 5-stage pipeline (run in order 00 -> 04)
+├── common.py                # shared constants + data/feature-engineering functions
+├── figures/                 # all plots produced by the notebooks
+├── results/                 # all tables + saved predictions produced by the notebooks
+├── report/                  # final_report.pdf, references.bib, video_script.md
+├── requirements.txt
+└── README.md
 ```
 
 ## 10. Reproducibility
 
-Random seeds (NumPy, TensorFlow, XGBoost) are fixed via `config.yaml` and
-set centrally in [`src/utils.py`](src/utils.py)'s `set_seed()`.
+Random seeds (NumPy, TensorFlow) are fixed via `common.py`'s `set_seed()`;
+XGBoost is no longer used, and TCN/LSTM's own `random_state`/Keras seeding
+is covered by the same call. SARIMAX and the grid-search tuning are
+otherwise deterministic given fixed data.
 
 ## 11. References
 
