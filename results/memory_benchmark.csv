@@ -1,3 +1,3 @@
 approach,file,rows_out,cols_out,elapsed_s,peak_rss_mb,peak_rss_reduction_pct
-naive_full_load,sms-call-internet-mi-2013-11-01.txt,4842625,8,2.35971150000114,764.921875,0.0
-optimized_chunked_typed_aggregated,sms-call-internet-mi-2013-11-01.txt,10000,2,1.4454329169984703,305.3125,60.08579307527321
+naive_full_load,sms-call-internet-mi-2013-11-01.txt,4842625,8,2.6231869159983034,635.109375,0.0
+optimized_chunked_typed_aggregated,sms-call-internet-mi-2013-11-01.txt,10000,2,1.7491424590007227,291.625,54.0827121312766
